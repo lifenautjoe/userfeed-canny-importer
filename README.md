@@ -24,9 +24,8 @@ The script uses the following environment variables:
 
 - `CANNY_API_KEY`: Your Canny API key
 - `OPENAI_API_KEY`: Your OpenAI API key
-- `BOARD_ID`: The ID of the Canny board where you want to import features
-- `FEATURE_CATEGORY_ID`: The ID of the board category for features
-- `BUG_CATEGORY_ID`: The ID of the board category for bugs
+- `FEATURE_BOARD_ID`: The ID of the Canny board for feature requests
+- `BUG_BOARD_ID`: The ID of the Canny board for bug reports
 
 You can set these in an `.env` file on the root. If any variables are missing, the script will prompt you to enter them.
 
@@ -55,6 +54,15 @@ The `feature_requests_export.csv` file should have the following columns:
 - Creates Canny users for each unique requester
 - Simulates votes using fake users
 - Ensures each fake user only votes once per post
+
+## Finding your Canny Board IDs
+
+Once you obtain your canny API key from your domain settings such as `example.canny.io/admin/settings/api`, you can run the following commands in your terminal to obtain your board IDs:
+
+```bash
+curl https://canny.io/api/v1/boards/list -X POST \
+    -d apiKey=YOUR_API_KEY_HERE \
+```
 
 ## Notes
 

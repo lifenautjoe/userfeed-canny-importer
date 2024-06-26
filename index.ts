@@ -5,9 +5,8 @@ import fs from "fs";
 const REQUIRED_ENV_VARS = [
   "CANNY_API_KEY",
   "OPENAI_API_KEY",
-  "BOARD_ID",
-  "FEATURE_CATEGORY_ID",
-  "BUG_CATEGORY_ID",
+  "FEATURE_BOARD_ID",
+  "BUG_BOARD_ID",
 ];
 
 interface FeatureRequest {
@@ -118,7 +117,7 @@ async function ensureFakeUsers(count: number): Promise<FakeUser[]> {
   const neededUsers = Math.max(count, fakeUsers.length);
 
   for (let i = fakeUsers.length; i < neededUsers; i++) {
-    const email = `user${i + 1}@internal.restream.io`;
+    const email = `user${i + 1}@dummy.restream.io`;
     const user = await createOrUpdateUser(email);
     fakeUsers.push(user);
     console.log(`Created new fake user: ${user.email}`);
@@ -135,7 +134,7 @@ async function categorizeRequest(
 ): Promise<"feature" | "bug"> {
   console.log(`Categorizing request: "${title}"`);
   const chatCompletion = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o",
     messages: [
       {
         role: "system",
@@ -166,19 +165,17 @@ async function createPost(
   category: "feature" | "bug"
 ): Promise<string> {
   console.log(`Creating post: "${request.title}" as ${category}`);
+  const boardID =
+    category === "feature" ? config.FEATURE_BOARD_ID : config.BUG_BOARD_ID;
   const response = await fetch("https://canny.io/api/v1/posts/create", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       apiKey: config.CANNY_API_KEY,
-      boardID: config.BOARD_ID,
+      boardID: boardID,
       authorID: author.id,
       title: request.title,
       details: request.description,
-      categoryID:
-        category === "feature"
-          ? config.FEATURE_CATEGORY_ID
-          : config.BUG_CATEGORY_ID,
       createdAt: request.created_at,
     }),
   });
