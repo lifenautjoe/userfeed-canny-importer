@@ -203,7 +203,7 @@ async function enhanceRequest(
     messages: [
       {
         role: "system",
-        content: `You are a helpful assistant that enhances feature requests and bug reports for ${config.PLATFORM_DETAILS}. Improve the title and description to make them concise and understandable.`,
+        content: `You are a helpful assistant that enhances feature requests and bug reports for ${config.PLATFORM_DETAILS}. Improve the title and description to make them concise and understandable. Do not add Feature Request or Bug in the title.`,
       },
       {
         role: "user",
