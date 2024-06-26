@@ -28,6 +28,8 @@ The script uses the following environment variables:
 - `BUG_BOARD_ID`: The ID of the Canny board for bug reports
 - `EMAIL_FAKE_DOMAIN`: The domain to use for fake email addresses
 - `INVALID_POSTS_AI_FILTERING` (optional): Set to `true` to use OpenAI to filter out invalid posts
+- `POSTS_AI_ENHANCEMENT`: Set to "true" to enable AI enhancement of post titles and descriptions (optional, default is "false")
+- `PLATFORM_DETAILS`: Provide details about the platform for better AI processing (optional)
 
 You can set these in an `.env` file on the root. If any variables are missing, the script will prompt you to enter them.
 
@@ -57,6 +59,8 @@ The `feature_requests_export.csv` file should have the following columns:
 - Simulates votes using fake users
 - Checks for existing posts to avoid duplicates
 - (optional) Uses OpenAI to filter out invalid posts (e.g., spam, inappropriate content)
+- (optional) Uses OpenAI to enhance post titles and descriptions
+- (optional) Accepts platform details for better AI processing
 
 ## Finding your Canny Board IDs
 

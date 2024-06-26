@@ -46,6 +46,9 @@ async function getConfig() {
   }
   config.INVALID_POSTS_AI_FILTERING =
     process.env.INVALID_POSTS_AI_FILTERING || "false";
+  config.POSTS_AI_ENHANCEMENT = process.env.POSTS_AI_ENHANCEMENT || "false";
+  config.PLATFORM_DETAILS = process.env.PLATFORM_DETAILS || "";
+  config.MAX_POSTS = process.env.MAX_POSTS || "Infinity";
   console.log("Configuration retrieval completed.");
 }
 
@@ -172,12 +175,11 @@ async function isValidRequest(
     messages: [
       {
         role: "system",
-        content:
-          "You are a helpful assistant that determines if a request is a valid feature request or bug report.",
+        content: `You are a helpful assistant that determines if a request is a valid feature request or bug report for ${config.PLATFORM_DETAILS}. Consider the platform details when evaluating the request.`,
       },
       {
         role: "user",
-        content: `Is the following a valid feature request or bug report? Answer with only 'yes' or 'no':
+        content: `Is the following a valid feature request or bug report for ${config.PLATFORM_DETAILS}? Answer with only 'yes' or 'no':
 Title: ${title}
 Description: ${description}
 Valid:`,
@@ -190,6 +192,44 @@ Valid:`,
     chatCompletion.choices[0]?.message.content?.trim().toLowerCase() === "yes";
   console.log(`Request validity: ${isValid}`);
   return isValid;
+}
+
+async function enhanceRequest(
+  request: FeatureRequest
+): Promise<FeatureRequest> {
+  console.log(`Enhancing request: "${request.title}"`);
+  const chatCompletion = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [
+      {
+        role: "system",
+        content: `You are a helpful assistant that enhances feature requests and bug reports for ${config.PLATFORM_DETAILS}. Improve the title and description to make them concise and understandable.`,
+      },
+      {
+        role: "user",
+        content: `Enhance the following request:
+Title: ${request.title}
+Description: ${request.description}
+
+Provide the enhanced version in the following format:
+Enhanced Title: [Your enhanced title]
+Enhanced Description: [Your enhanced description]`,
+      },
+    ],
+  });
+
+  const enhancedContent = chatCompletion.choices[0]?.message.content;
+  const enhancedTitle =
+    enhancedContent?.match(/Enhanced Title: (.+)/)?.[1] || request.title;
+  const enhancedDescription =
+    enhancedContent?.match(/Enhanced Description: (.+)/s)?.[1] ||
+    request.description;
+
+  return {
+    ...request,
+    title: enhancedTitle,
+    description: `${enhancedDescription}\n\nOriginal title: ${request.title}\nOriginal description: ${request.description}`,
+  };
 }
 
 async function createPost(
@@ -311,7 +351,17 @@ async function main() {
     );
     const existingBugPosts = await fetchExistingPosts(config.BUG_BOARD_ID);
 
+    const maxPosts = parseInt(config.MAX_POSTS);
+    let importedPosts = 0;
+
     for (const request of requests) {
+      if (importedPosts >= maxPosts) {
+        console.log(
+          `Reached maximum number of posts (${maxPosts}). Stopping import.`
+        );
+        break;
+      }
+
       console.log(`Processing request: "${request.title}"`);
       try {
         if (config.INVALID_POSTS_AI_FILTERING === "true") {
@@ -325,31 +375,41 @@ async function main() {
           }
         }
 
+        let enhancedRequest = request;
+        if (config.POSTS_AI_ENHANCEMENT === "true") {
+          enhancedRequest = await enhanceRequest(request);
+        }
+
         const category = await categorizeRequest(
-          request.title,
-          request.description
+          enhancedRequest.title,
+          enhancedRequest.description
         );
 
         const existingPosts =
           category === "feature" ? existingFeaturePosts : existingBugPosts;
 
-        if (existingPosts.has(request.title)) {
-          console.log(`Skipping already imported request: "${request.title}"`);
+        if (existingPosts.has(enhancedRequest.title)) {
+          console.log(
+            `Skipping already imported request: "${enhancedRequest.title}"`
+          );
           continue;
         }
 
         const author = await createOrUpdateUser(request["Requested By"]);
-        const postID = await createPost(request, author, category);
+        const postID = await createPost(enhancedRequest, author, category);
         await addVotes(postID, parseInt(request["Total Likes"]), fakeUsers);
-        console.log(`Imported: ${request.title}`);
+        console.log(`Imported: ${enhancedRequest.title}`);
 
-        existingPosts.add(request.title);
+        existingPosts.add(enhancedRequest.title);
+        importedPosts++;
       } catch (error) {
         console.error(`Error processing request "${request.title}":`, error);
       }
     }
 
-    console.log("Import completed successfully!");
+    console.log(
+      `Import completed successfully! Imported ${importedPosts} posts.`
+    );
   } catch (error) {
     console.error("Error during import:", error);
   }
