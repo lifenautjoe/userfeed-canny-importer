@@ -33,4 +33,5 @@ Thumbs.db
 *.sln
 *.sw?
 
+fake_users.json
 feature_requests_export.csv
