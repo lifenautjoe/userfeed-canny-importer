@@ -26,6 +26,7 @@ The script uses the following environment variables:
 - `OPENAI_API_KEY`: Your OpenAI API key
 - `FEATURE_BOARD_ID`: The ID of the Canny board for feature requests
 - `BUG_BOARD_ID`: The ID of the Canny board for bug reports
+- `EMAIL_FAKE_DOMAIN`: The domain to use for fake email addresses
 
 You can set these in an `.env` file on the root. If any variables are missing, the script will prompt you to enter them.
 
@@ -53,7 +54,7 @@ The `feature_requests_export.csv` file should have the following columns:
 - Uses OpenAI to categorize requests as features or bugs
 - Creates Canny users for each unique requester
 - Simulates votes using fake users
-- Ensures each fake user only votes once per post
+- Checks for existing posts to avoid duplicates
 
 ## Finding your Canny Board IDs
 

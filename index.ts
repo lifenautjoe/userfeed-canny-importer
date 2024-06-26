@@ -7,6 +7,7 @@ const REQUIRED_ENV_VARS = [
   "OPENAI_API_KEY",
   "FEATURE_BOARD_ID",
   "BUG_BOARD_ID",
+  "EMAIL_FAKE_DOMAIN",
 ];
 
 interface FeatureRequest {
@@ -117,7 +118,7 @@ async function ensureFakeUsers(count: number): Promise<FakeUser[]> {
   const neededUsers = Math.max(count, fakeUsers.length);
 
   for (let i = fakeUsers.length; i < neededUsers; i++) {
-    const email = `user${i + 1}@dummy.restream.io`;
+    const email = `fake${i + 1}@${config.EMAIL_FAKE_DOMAIN}`;
     const user = await createOrUpdateUser(email);
     fakeUsers.push(user);
     console.log(`Created new fake user: ${user.email}`);
@@ -134,7 +135,7 @@ async function categorizeRequest(
 ): Promise<"feature" | "bug"> {
   console.log(`Categorizing request: "${title}"`);
   const chatCompletion = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-4",
     messages: [
       {
         role: "system",
@@ -233,6 +234,35 @@ function pseudoRandom(seed: number): number {
   return x - Math.floor(x);
 }
 
+async function fetchExistingPosts(boardID: string): Promise<Set<string>> {
+  console.log(`Fetching existing posts for board ${boardID}...`);
+  const existingPosts = new Set<string>();
+  let hasMore = true;
+  let skip = 0;
+  const limit = 100; // Adjust as needed
+
+  while (hasMore) {
+    const response = await fetch("https://canny.io/api/v1/posts/list", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        apiKey: config.CANNY_API_KEY,
+        boardID,
+        limit,
+        skip,
+      }),
+    });
+
+    const data = await response.json();
+    data.posts.forEach((post: any) => existingPosts.add(post.title));
+    hasMore = data.hasMore;
+    skip += limit;
+  }
+
+  console.log(`Found ${existingPosts.size} existing posts.`);
+  return existingPosts;
+}
+
 async function main() {
   try {
     console.log("Starting import process...");
@@ -244,16 +274,36 @@ async function main() {
     console.log(`Maximum number of votes found: ${maxVotes}`);
     const fakeUsers = await ensureFakeUsers(maxVotes);
 
+    const existingFeaturePosts = await fetchExistingPosts(
+      config.FEATURE_BOARD_ID
+    );
+    const existingBugPosts = await fetchExistingPosts(config.BUG_BOARD_ID);
+
     for (const request of requests) {
       console.log(`Processing request: "${request.title}"`);
-      const author = await createOrUpdateUser(request["Requested By"]);
-      const category = await categorizeRequest(
-        request.title,
-        request.description
-      );
-      const postID = await createPost(request, author, category);
-      await addVotes(postID, parseInt(request["Total Likes"]), fakeUsers);
-      console.log(`Imported: ${request.title}`);
+      try {
+        const category = await categorizeRequest(
+          request.title,
+          request.description
+        );
+
+        const existingPosts =
+          category === "feature" ? existingFeaturePosts : existingBugPosts;
+
+        if (existingPosts.has(request.title)) {
+          console.log(`Skipping already imported request: "${request.title}"`);
+          continue;
+        }
+
+        const author = await createOrUpdateUser(request["Requested By"]);
+        const postID = await createPost(request, author, category);
+        await addVotes(postID, parseInt(request["Total Likes"]), fakeUsers);
+        console.log(`Imported: ${request.title}`);
+
+        existingPosts.add(request.title);
+      } catch (error) {
+        console.error(`Error processing request "${request.title}":`, error);
+      }
     }
 
     console.log("Import completed successfully!");
