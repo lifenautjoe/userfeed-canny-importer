@@ -44,6 +44,8 @@ async function getConfig() {
       console.log(`Config ${key} manually entered.`);
     }
   }
+  config.INVALID_POSTS_AI_FILTERING =
+    process.env.INVALID_POSTS_AI_FILTERING || "false";
   console.log("Configuration retrieval completed.");
 }
 
@@ -158,6 +160,36 @@ Category:`,
     .toLowerCase();
   console.log(`Request categorized as: ${category}`);
   return category === "bug" ? "bug" : "feature";
+}
+
+async function isValidRequest(
+  title: string,
+  description: string
+): Promise<boolean> {
+  console.log(`Validating request: "${title}"`);
+  const chatCompletion = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a helpful assistant that determines if a request is a valid feature request or bug report.",
+      },
+      {
+        role: "user",
+        content: `Is the following a valid feature request or bug report? Answer with only 'yes' or 'no':
+Title: ${title}
+Description: ${description}
+Valid:`,
+      },
+    ],
+    max_tokens: 1,
+  });
+
+  const isValid =
+    chatCompletion.choices[0]?.message.content?.trim().toLowerCase() === "yes";
+  console.log(`Request validity: ${isValid}`);
+  return isValid;
 }
 
 async function createPost(
@@ -282,6 +314,17 @@ async function main() {
     for (const request of requests) {
       console.log(`Processing request: "${request.title}"`);
       try {
+        if (config.INVALID_POSTS_AI_FILTERING === "true") {
+          const isValid = await isValidRequest(
+            request.title,
+            request.description
+          );
+          if (!isValid) {
+            console.log(`Skipping invalid request: "${request.title}"`);
+            continue;
+          }
+        }
+
         const category = await categorizeRequest(
           request.title,
           request.description
