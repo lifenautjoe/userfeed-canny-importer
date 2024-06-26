@@ -1,6 +1,7 @@
 import { parse } from "csv-parse/sync";
 import OpenAI from "openai";
 import fs from "fs";
+import crypto from "crypto";
 
 const REQUIRED_ENV_VARS = [
   "CANNY_API_KEY",
@@ -9,6 +10,11 @@ const REQUIRED_ENV_VARS = [
   "BUG_BOARD_ID",
   "EMAIL_FAKE_DOMAIN",
 ];
+
+interface ImportState {
+  cursor: number;
+  importedIds: string[];
+}
 
 interface FeatureRequest {
   title: string;
@@ -334,6 +340,34 @@ async function fetchExistingPosts(boardID: string): Promise<Set<string>> {
   console.log(`Found ${existingPosts.size} existing posts.`);
   return existingPosts;
 }
+function generateItemId(request: FeatureRequest): string {
+  return crypto
+    .createHash("md5")
+    .update(`${request.title}${request.created_at}`)
+    .digest("hex");
+}
+
+function loadOrCreateImportState(): ImportState {
+  console.log("Loading import state...");
+  try {
+    const fileContent = fs.readFileSync("import_state.json", "utf-8");
+    const state = JSON.parse(fileContent);
+    console.log(
+      `Loaded import state with cursor at ${state.cursor} and ${state.importedIds.length} imported items.`
+    );
+    return state;
+  } catch {
+    console.log("No existing import state found. Starting fresh.");
+    return { cursor: 0, importedIds: [] };
+  }
+}
+
+function saveImportState(state: ImportState) {
+  fs.writeFileSync("import_state.json", JSON.stringify(state, null, 2));
+  console.log(
+    `Import state saved. Cursor: ${state.cursor}, Imported items: ${state.importedIds.length}`
+  );
+}
 
 async function main() {
   try {
@@ -352,14 +386,23 @@ async function main() {
     const existingBugPosts = await fetchExistingPosts(config.BUG_BOARD_ID);
 
     const maxPosts = parseInt(config.MAX_POSTS);
-    let importedPosts = 0;
+    let importState = loadOrCreateImportState();
+    let importedPosts = importState.importedIds.length;
 
-    for (const request of requests) {
+    for (let i = importState.cursor; i < requests.length; i++) {
       if (importedPosts >= maxPosts) {
         console.log(
           `Reached maximum number of posts (${maxPosts}). Stopping import.`
         );
         break;
+      }
+
+      const request = requests[i];
+      const itemId = generateItemId(request);
+
+      if (importState.importedIds.includes(itemId)) {
+        console.log(`Skipping already imported request: "${request.title}"`);
+        continue;
       }
 
       console.log(`Processing request: "${request.title}"`);
@@ -390,7 +433,7 @@ async function main() {
 
         if (existingPosts.has(enhancedRequest.title)) {
           console.log(
-            `Skipping already imported request: "${enhancedRequest.title}"`
+            `Skipping already existing post: "${enhancedRequest.title}"`
           );
           continue;
         }
@@ -402,6 +445,9 @@ async function main() {
 
         existingPosts.add(enhancedRequest.title);
         importedPosts++;
+        importState.importedIds.push(itemId);
+        importState.cursor = i + 1;
+        saveImportState(importState);
       } catch (error) {
         console.error(`Error processing request "${request.title}":`, error);
       }
